@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>線上 Python 執行器 · Pyodide</title>
+  <meta name="description" content="單一 HTML 檔，使用 Pyodide 在瀏覽器直接執行 Python。" />
+  <style>
+    :root { --bg: #0b1020; --panel:#121733; --ink:#e6e9f2; --muted:#95a1c6; --brand:#6aa6ff; --accent:#8ef1d6; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#0b1020,#0c1330 50%,#09102a);color:var(--ink);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+    header h1{font-size:20px;margin:0}
+    .badge{font-size:12px;color:#0b1020;background:var(--accent);padding:2px 8px;border-radius:999px}
+    .panels{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media (max-width: 960px){.panels{grid-template-columns:1fr}}
+    .card{background:rgba(255,255,255,0.04);backdrop-filter: blur(6px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;box-shadow:0 6px 30px rgba(0,0,0,0.25);overflow:hidden}
+    .card h2{margin:0;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.07);font-size:13px;color:var(--muted)}
+    .toolbar{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,0.07)}
+    .toolbar .spacer{flex:1}
+    button, select, input[type="file"]::file-selector-button {appearance:none;border:1px solid rgba(255,255,255,0.14);background:#131a3b;color:var(--ink);padding:8px 12px;border-radius:12px;cursor:pointer}
+    button:hover{border-color:rgba(255,255,255,0.28)}
+    button.primary{background:linear-gradient(180deg,#2c60ff,#1742d8);border:none}
+    button.ghost{background:transparent}
+    button.small{padding:6px 9px;font-size:12px;border-radius:10px}
+    .editor{width:100%;height:420px;background:#0c1432;color:#f5f7ff;border:none;outline:none;padding:14px 16px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;border-radius:0;resize:vertical}
+    .output{height:380px;padding:10px 12px;background:#071025;color:#d8e2ff;overflow:auto;white-space:pre-wrap}
+    .inputbar{display:flex;border-top:1px solid rgba(255,255,255,0.08)}
+    .inputbar input{flex:1;padding:8px 10px;background:#0f1640;border:none;color:var(--ink);font:13px/1.5 ui-monospace;border-radius:0}
+    .inputbar button{border:none;background:var(--brand);color:#fff;padding:8px 14px;cursor:pointer;border-radius:0}
+    .status{display:flex;align-items:center;gap:8px;color:var(--muted);padding:8px 10px;font-size:12px;border-top:1px solid rgba(255,255,255,0.08)}
+    .dot{width:8px;height:8px;border-radius:50%;background:#bbb}
+    .dot.ok{background:#27e1a7}.dot.busy{background:#ffd166}.dot.err{background:#ff6b6b}
+    .hint{color:var(--muted);font-size:12px;margin:8px 0 0}
+    .footer{margin-top:14px;color:var(--muted);font-size:12px}
+    a{color:var(--brand)}
+    .kbd{display:inline-block;border:1px solid rgba(255,255,255,0.18);padding:1px 6px;border-radius:6px;background:#0f1640}
+  </style>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <script>
+	if ('serviceWorker' in navigator) {
+	window.addEventListener('load', () => {
+	navigator.serviceWorker.register('./sw.js').catch(console.error);
+	});
+	}
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l2.39 4.84 5.34.78-3.86 3.77.91 5.32L12 14.77 7.22 16.7l.91-5.32L4.27 7.62l5.34-.78L12 2z" fill="#8ef1d6"/></svg>
+      <h1>線上 Python 執行器</h1>
+      <span class="badge">Pyodide 本地運行</span>
+      <div class="spacer"></div>
+    </header>
+
+    <div class="card">
+      <div class="toolbar">
+        <button id="runBtn" class="primary">▶  執行（Ctrl/⌘ + Enter）</button>
+        <button id="stopBtn" class="ghost">■ 停止</button>
+        <button id="clearBtn" class="ghost">清空輸出</button>
+        <button id="resetBtn" class="ghost">重置解譯器</button>
+        <div class="spacer"></div>
+        <label>
+          <select id="examples">
+            <option value="">範例程式…</option>
+            <option value="hello">Hello / 變數</option>
+            <option value="loop">FizzBuzz</option>
+            <option value="fib">費波那契</option>
+            <option value="plot">Matplotlib 圖表</option>
+            <option value="input">input() 範例</option>
+          </select>
+        </label>
+        <label class="small">
+          <input id="fileInput" type="file" accept=".py" style="display:none" />
+          <button id="openBtn" class="small">開啟 .py</button>
+        </label>
+        <button id="saveBtn" class="small">下載程式</button>
+      </div>
+      <h2>編輯區</h2>
+      <textarea id="editor" class="editor" spellcheck="false" placeholder="# 在此輸入 Python 程式碼，按上方「執行」或 Ctrl/⌘ + Enter"></textarea>
+      <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">正在載入 Pyodide…</span><span class="spacer"></span><span id="pkgStatus"></span></div>
+    </div>
+
+    <div class="panels" style="margin-top:14px">
+      <div class="card">
+        <h2>輸出（stdout/stderr）</h2>
+        <pre id="output" class="output"></pre>
+        <div class="inputbar">
+          <input id="stdin" placeholder="輸入文字後 Enter 傳送" />
+          <button id="sendInput">送出</button>
+        </div>
+        <div class="status"><span class="dot ok"></span>沙箱：在瀏覽器本機執行，無需伺服器或後端。<span class="spacer"></span></div>
+      </div>
+      <div class="card">
+        <h2>套件（選用）</h2>
+        <div class="toolbar">
+          <input id="pkgName" placeholder="套件名稱，如: numpy 或 pandas" style="flex:1;min-width:160px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);background:#0f1640;color:var(--ink)"/>
+          <button id="installBtn">用 micropip 安裝</button>
+        </div>
+        <div class="hint">注意：僅支援 Pyodide 可用的純 Python 或已編譯至 WebAssembly 的套件。安裝過程需要網路且可能較久。</div>
+        <div class="status"><span class="dot" id="pkgDot"></span><span id="pkgText">尚未安裝任何套件</span></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      使用方法：輸入程式碼 → 按 <span class="kbd">Ctrl/⌘</span> + <span class="kbd">Enter</span> 或點「執行」。可下載/上傳程式、選擇範例、安裝套件。<br />
+      部署：建議以本機伺服器開啟以避免瀏覽器對 file:// 的限制：在此資料夾執行 <code>python -m http.server 8765</code>，再用瀏覽器開 <code>http://localhost:8765/</code>。或放到任何靜態空間（GitHub Pages、Netlify、S3 等）。
+    </div>
+  </div>
+
+  <!-- Pyodide：鎖定版本避免破版，如需更新可改版本號 -->
+  <script>
+    const PYODIDE_VERSION = '0.26.2';
+    const CDN_CANDIDATES = [
+      `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`,
+      `https://unpkg.com/pyodide@${PYODIDE_VERSION}/full/`
+    ];
+
+    function loadScript(src, timeoutMs = 12000){
+      return new Promise((resolve, reject)=>{
+        const s = document.createElement('script');
+        s.src = src; s.async = true; s.crossOrigin = 'anonymous';
+        const t = setTimeout(()=>{ s.remove(); reject(new Error('timeout')); }, timeoutMs);
+        s.onload = ()=>{ clearTimeout(t); resolve(); };
+        s.onerror = ()=>{ clearTimeout(t); s.remove(); reject(new Error('load error')); };
+        document.head.appendChild(s);
+      });
+    }
+
+    async function loadPyodideWithFallback(){
+      let lastErr = null;
+      for(const base of CDN_CANDIDATES){
+        try{
+          await loadScript(base + 'pyodide.js');
+          return base;
+        }catch(e){ lastErr = e; }
+      }
+      throw lastErr || new Error('Unable to load pyodide.js from all CDNs');
+    }
+  </script>
+  <script>
+    const editor = document.getElementById('editor');
+    const output = document.getElementById('output');
+    const runBtn = document.getElementById('runBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const statusText = document.getElementById('statusText');
+    const statusDot = document.getElementById('statusDot');
+    const examples = document.getElementById('examples');
+    const fileInput = document.getElementById('fileInput');
+    const openBtn = document.getElementById('openBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const pkgName = document.getElementById('pkgName');
+    const installBtn = document.getElementById('installBtn');
+    const pkgDot = document.getElementById('pkgDot');
+    const pkgText = document.getElementById('pkgText');
+    const stdinInput = document.getElementById('stdin');
+    const sendInputBtn = document.getElementById('sendInput');
+
+    const LS_KEY = 'pyodide-editor-code-v1';
+    const DEFAULT_CODE = `# Hello from Pyodide!\nprint('Hello, Python on the web 👋')\nname = input('你的名字？ ')\nprint('Hi,', name)\n`;
+
+    let pyodide = null;
+    let running = false;
+    let inputQueue = []; // 未使用：保留給擴充多行模式
+    let inputResolver = null; // 未使用：保留
+
+    // 將輸入框內容送進 stdin 佇列
+    function pushStdin(line){
+      const data = String(line ?? '');
+      if (window.__stdinWaiter){ const w = window.__stdinWaiter; window.__stdinWaiter = null; w(data); }
+      else if (window.__stdinQueue){ window.__stdinQueue.push(data); }
+    }
+
+    function setStatus(text, state='busy'){
+      statusText.textContent = text;
+      statusDot.className = 'dot ' + (state==='ok'?'ok':state==='err'?'err':'busy');
+    }
+    function appendOut(text){ output.textContent += text; output.scrollTop = output.scrollHeight; }
+    function clearOut(){ output.textContent=''; }
+
+    async function boot(){
+      try {
+        setStatus('正在載入 Pyodide…');
+        const indexURL = await loadPyodideWithFallback();
+        document.getElementById('pkgStatus').textContent = 'CDN: ' + indexURL;
+        pyodide = await loadPyodide({ indexURL });
+        // 透過 setStdin 將 input() 綁到下方輸入框
+        if (pyodide.setStdin){
+          // 簡易 stdin 佇列：由 UI push，Python 端 pull
+          window.__stdinQueue = [];
+          window.__stdinWaiter = null;
+          const readLine = async () => {
+            if (window.__stdinQueue.length) return window.__stdinQueue.shift();
+            stdinInput?.focus();
+            return await new Promise(res=> { window.__stdinWaiter = res; });
+          };
+          pyodide.setStdin({
+            stdin: async () => {
+              const line = await readLine();
+              return (line ?? '') + '\n';
+            }
+          });
+        }
+        setStatus('就緒，可以執行 Python。', 'ok');
+      } catch (e){
+        setStatus('載入失敗：'+ e.message, 'err');
+      }
+    }
+
+    async function runCode(){
+      if(!pyodide) return;
+      if(running){ appendOut('\n[busy] 已在執行，請先停止或等待…\n'); return; }
+      const code = editor.value;
+      localStorage.setItem(LS_KEY, code);
+      clearOut();
+      running = true;
+      setStatus('執行中…');
+      try{
+        pyodide.setStdout({ batched: (s)=>appendOut(s) });
+        pyodide.setStderr({ batched: (s)=>appendOut(s) });
+        await pyodide.runPythonAsync(code);
+        appendOut('\n[done] 程式結束。\n');
+        setStatus('完成。', 'ok');
+      }catch(e){
+        appendOut('\n[error] ' + e + '\n');
+        setStatus('執行發生錯誤。', 'err');
+      }finally{
+        running = false;
+      }
+    }
+
+    async function stopRun(){
+      if(running){ appendOut('\n[stopping] 透過重置解譯器來中止執行…\n'); }
+      await resetKernel();
+      appendOut('\n[stopped] 已重置解譯器。\n');
+    }
+
+    async function resetKernel(){
+      setStatus('重置中…');
+      try{ pyodide?.terminate?.(); }catch(_){ }
+      pyodide = null;
+      await boot();
+      setStatus('已重置。', 'ok');
+    }
+
+    const EXAMPLES = {
+      input: `# 使用 input()（下方輸入框輸入資料）\nname = input('請輸入你的名字： ')\nprint('你好,', name)\n`
+    };
+
+    examples.addEventListener('change', ()=>{
+      const key = examples.value;
+      if(key && EXAMPLES[key]){
+        editor.value = EXAMPLES[key];
+      }
+    });
+
+    openBtn.addEventListener('click', ()=> fileInput.click());
+    fileInput.addEventListener('change', (e)=>{
+      const file = e.target.files?.[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{ editor.value = reader.result; };
+      reader.readAsText(file);
+    });
+
+    saveBtn.addEventListener('click', ()=>{
+      const blob = new Blob([editor.value], {type:'text/x-python'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'script.py'; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    runBtn.addEventListener('click', runCode);
+    stopBtn.addEventListener('click', stopRun);
+    clearBtn.addEventListener('click', clearOut);
+    resetBtn.addEventListener('click', resetKernel);
+
+    // 輸入框：Enter 送出
+    sendInputBtn.addEventListener('click', ()=>{
+      const v = stdinInput.value; stdinInput.value = ''; pushStdin(v);
+    });
+    stdinInput.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendInputBtn.click(); }
+    });
+
+    // 快捷鍵：Ctrl/Cmd + Enter 執行
+    document.addEventListener('keydown', (e)=>{
+      if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+        e.preventDefault(); runCode();
+      }
+    });
+
+    // 保留/載入編輯器內容
+    const saved = localStorage.getItem(LS_KEY);
+    editor.value = saved || DEFAULT_CODE;
+
+    // 啟動
+    boot();
+  </script>
+</body>
+</html>
